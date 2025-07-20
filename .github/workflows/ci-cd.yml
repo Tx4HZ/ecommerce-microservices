@@ -8,6 +8,7 @@ on:
 
 env:
   DOCKER_HUB_REPOSITORY: ${{ vars.DOCKER_HUB_REPOSITORY || 'ecommerce-platform' }}
+  SERVICES_DIR: ./services  # Добавляем переменную для пути к сервисам
 
 jobs:
   build-and-test:
@@ -22,19 +23,26 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
     
-    - name: Build with Gradle
-      run: ./gradlew build
+    - name: Build all services
+      run: |
+        cd ${{ env.SERVICES_DIR }}/api-gateway && ./gradlew build
+        cd ${{ env.SERVICES_DIR }}/auth-service && ./gradlew build
+        cd ${{ env.SERVICES_DIR }}/user-service && ./gradlew build
       
     - name: Run tests
-      run: ./gradlew test
+      run: |
+        cd ${{ env.SERVICES_DIR }}/api-gateway && ./gradlew test
+        cd ${{ env.SERVICES_DIR }}/auth-service && ./gradlew test
+        cd ${{ env.SERVICES_DIR }}/user-service && ./gradlew test
       
-    - name: Upload code coverage report
+    - name: Upload code coverage reports
       uses: actions/upload-artifact@v4
       with:
-        name: code-coverage-report
+        name: code-coverage-reports
         path: |
-          build/reports/jacoco/test/html/
-          build/reports/tests/test/
+          ${{ env.SERVICES_DIR }}/api-gateway/build/reports/jacoco/test/html/
+          ${{ env.SERVICES_DIR }}/auth-service/build/reports/jacoco/test/html/
+          ${{ env.SERVICES_DIR }}/user-service/build/reports/jacoco/test/html/
         retention-days: 7
 
   docker-build-push:
@@ -50,64 +58,23 @@ jobs:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_TOKEN }}
     
-    - name: Extract metadata for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: |
-          ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-api-gateway
-          ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-auth-service
-          ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-user-service
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
-    
     - name: Build and push API Gateway
       uses: docker/build-push-action@v5
       with:
-        context: ./api-gateway
-        push: ${{ github.ref == 'refs/heads/main' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        context: ${{ env.SERVICES_DIR }}/api-gateway
+        push: true
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-api-gateway:latest
     
     - name: Build and push Auth Service
       uses: docker/build-push-action@v5
       with:
-        context: ./auth-service
-        push: ${{ github.ref == 'refs/heads/main' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        context: ${{ env.SERVICES_DIR }}/auth-service
+        push: true
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-auth-service:latest
     
     - name: Build and push User Service
       uses: docker/build-push-action@v5
       with:
-        context: ./user-service
-        push: ${{ github.ref == 'refs/heads/main' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-
-  notify-success:
-    needs: docker-build-push
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify Slack on success
-        if: success()
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          slack-message: "✅ CI/CD Pipeline succeeded for ${{ github.repository }}@${{ github.sha }}"
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-      
-      - name: Notify Slack on failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
-          slack-message: "❌ CI/CD Pipeline failed for ${{ github.repository }}@${{ github.sha }}"
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        context: ${{ env.SERVICES_DIR }}/user-service
+        push: true
+        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-user-service:latest
