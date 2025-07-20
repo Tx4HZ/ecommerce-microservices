@@ -8,7 +8,7 @@ on:
 
 env:
   DOCKER_HUB_REPOSITORY: ${{ vars.DOCKER_HUB_REPOSITORY || 'ecommerce-platform' }}
-  SERVICES_DIR: ./services  # Добавляем переменную для пути к сервисам
+  SERVICES_DIR: ./services
 
 jobs:
   build-and-test:
@@ -23,26 +23,21 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
     
-    - name: Build all services
+    - name: Find and build services
       run: |
-        cd ${{ env.SERVICES_DIR }}/api-gateway && ./gradlew build
-        cd ${{ env.SERVICES_DIR }}/auth-service && ./gradlew build
-        cd ${{ env.SERVICES_DIR }}/user-service && ./gradlew build
-      
-    - name: Run tests
-      run: |
-        cd ${{ env.SERVICES_DIR }}/api-gateway && ./gradlew test
-        cd ${{ env.SERVICES_DIR }}/auth-service && ./gradlew test
-        cd ${{ env.SERVICES_DIR }}/user-service && ./gradlew test
+        for service_dir in ${{ env.SERVICES_DIR }}/*; do
+          if [ -f "$service_dir/build.gradle" ]; then
+            echo "Building service in $service_dir"
+            cd "$service_dir" && ./gradlew build
+          fi
+        done
       
     - name: Upload code coverage reports
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: code-coverage-reports
-        path: |
-          ${{ env.SERVICES_DIR }}/api-gateway/build/reports/jacoco/test/html/
-          ${{ env.SERVICES_DIR }}/auth-service/build/reports/jacoco/test/html/
-          ${{ env.SERVICES_DIR }}/user-service/build/reports/jacoco/test/html/
+        path: ${{ env.SERVICES_DIR }}/*/build/reports/
         retention-days: 7
 
   docker-build-push:
@@ -58,23 +53,13 @@ jobs:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_TOKEN }}
     
-    - name: Build and push API Gateway
-      uses: docker/build-push-action@v5
-      with:
-        context: ${{ env.SERVICES_DIR }}/api-gateway
-        push: true
-        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-api-gateway:latest
-    
-    - name: Build and push Auth Service
-      uses: docker/build-push-action@v5
-      with:
-        context: ${{ env.SERVICES_DIR }}/auth-service
-        push: true
-        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-auth-service:latest
-    
-    - name: Build and push User Service
-      uses: docker/build-push-action@v5
-      with:
-        context: ${{ env.SERVICES_DIR }}/user-service
-        push: true
-        tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-user-service:latest
+    - name: Build and push services
+      run: |
+        for service_dir in ${{ env.SERVICES_DIR }}/*; do
+          if [ -f "$service_dir/build.gradle" ]; then
+            service_name=$(basename "$service_dir")
+            echo "Building Docker image for $service_name"
+            docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-${service_name}:latest "$service_dir"
+            docker push ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.DOCKER_HUB_REPOSITORY }}-${service_name}:latest
+          fi
+        done
