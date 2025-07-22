@@ -1,13 +1,43 @@
-.PHONY: build up down logs clean purge swagger
+.PHONY: build rebuild rebuild-api-gateway rebuild-auth-service rebuild-user-service up down logs clean purge swagger status
 
-# Сборка всех сервисов
+# Полная сборка всех сервисов с нуля
 build:
-	@echo "Building Gradle projects..."
-	cd services/api-gateway && ./gradlew build -x test
-	cd services/auth-service && ./gradlew build -x test
-	cd services/user-service && ./gradlew build -x test
+	@echo "Building Gradle projects from scratch..."
+	cd services/api-gateway && ./gradlew clean build -x test
+	cd services/auth-service && ./gradlew clean build -x test
+	cd services/user-service && ./gradlew clean build -x test
 	@echo "Building Docker images..."
+	docker-compose build --no-cache
+
+# Инкрементальная пересборка всех сервисов
+rebuild:
+	@echo "Incrementally rebuilding Gradle projects..."
+	cd services/api-gateway && ./gradlew assemble -x test
+	cd services/auth-service && ./gradlew assemble -x test
+	cd services/user-service && ./gradlew assemble -x test
+	@echo "Rebuilding Docker images..."
 	docker-compose build
+
+# Инкрементальная пересборка api-gateway
+rebuild-api-gateway:
+	@echo "Incrementally rebuilding api-gateway..."
+	cd services/api-gateway && ./gradlew assemble -x test
+	@echo "Rebuilding api-gateway Docker image..."
+	docker-compose build api-gateway
+
+# Инкрементальная пересборка auth-service
+rebuild-auth-service:
+	@echo "Incrementally rebuilding auth-service..."
+	cd services/auth-service && ./gradlew assemble -x test
+	@echo "Rebuilding auth-service Docker image..."
+	docker-compose build auth-service
+
+# Инкрементальная пересборка user-service
+rebuild-user-service:
+	@echo "Incrementally rebuilding user-service..."
+	cd services/user-service && ./gradlew assemble -x test
+	@echo "Rebuilding user-service Docker image..."
+	docker-compose build user-service
 
 # Запуск всех сервисов
 up:
@@ -21,6 +51,7 @@ down:
 
 # Просмотр логов
 logs:
+	@echo "Showing logs..."
 	docker-compose logs -f
 
 # Очистка временных файлов

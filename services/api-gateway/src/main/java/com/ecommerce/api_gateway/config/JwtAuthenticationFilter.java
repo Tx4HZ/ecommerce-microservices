@@ -14,7 +14,7 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<Abstra
 
     public JwtAuthenticationFilter(WebClient.Builder webClientBuilder) {
         super(NameConfig.class);
-        this.webClient = webClientBuilder.baseUrl("http://localhost:8081").build(); // URL AuthService
+        this.webClient = webClientBuilder.baseUrl("http://localhost:8080").build(); // URL AuthService
     }
 
     @Override
